@@ -1,0 +1,97 @@
+name: Build Android Kernel
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:  # Allows manual trigger
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout kernel source
+      uses: actions/checkout@v4
+      with:
+        repository: LineageOS/android_kernel_lge_sdm845
+        ref: lineage-22.2  # LineageOS 22.2 (Android 15)
+        path: kernel
+        fetch-depth: 1  # Shallow clone to save time
+        
+    - name: Setup build environment
+      run: |
+        sudo apt-get update
+        sudo apt install bc bison build-essential ccache curl flex g++-multilib \
+        gcc-multilib git gnupg gperf imagemagick  \
+        lib32readline-dev lib32z1-dev liblz4-tool  libncurses5-dev \
+        libsdl1.2-dev libssl-dev libxml2 libxml2-utils lzop pngcrush \
+        rsync schedtool squashfs-tools xsltproc zip zlib1g-dev unzip \
+        python3 python-is-python3 openjdk-11-jdk -y
+        wget https://archive.ubuntu.com/ubuntu/pool/universe/n/ncurses/libtinfo5_6.3-2_amd64.deb && sudo dpkg -i libtinfo5_6.3-2_amd64.deb && rm -f libtinfo5_6.3-2_amd64.deb
+        wget https://archive.ubuntu.com/ubuntu/pool/universe/n/ncurses/libncurses5_6.3-2_amd64.deb && sudo dpkg -i libncurses5_6.3-2_amd64.deb && rm -f libncurses5_6.3-2_amd64.deb
+
+
+          
+        
+    - name: Download toolchain
+      run: |
+        mkdir -p toolchain
+        cd toolchain
+        # Clang toolchain
+        git clone https://github.com/LineageOS/android_prebuilts_clang_kernel_linux-x86_clang-r416183b -b lineage-20.0 || true
+        # GCC toolchain for compatibility
+        git clone https://github.com/LineageOS/android_prebuilts_gcc_linux-x86_aarch64_aarch64-linux-android-4.9 -b lineage-19.1 || true
+        git clone https://github.com/LineageOS/android_prebuilts_gcc_linux-x86_arm_arm-linux-androideabi-4.9 -b lineage-19.1 || true
+        
+    - name: Clone SukiSU (optional)
+      run: |
+        #git clone https://github.com/SukiSU-Ultra/SukiSU-Ultra sukisu
+        # Follow SukiSU integration steps here
+        # cp -r sukisu/kernel_patches/* kernel/
+        
+    - name: Build kernel
+      run: |
+        cd kernel
+        export ARCH=arm64
+        export SUBARCH=arm64
+        export CLANG_PATH=/toolchain/android_prebuilts_clang_kernel_linux-x86_clang-r416183b/bin
+        export CROSS_COMPILE=/toolchain/android_prebuilts_gcc_linux-x86_aarch64_aarch64-linux-android-4.9/bin/aarch64-linux-android-
+        export CROSS_COMPILE_ARM32=/toolchain/android_prebuilts_gcc_linux-x86_arm_arm-linux-androideabi-4.9/bin/arm-linux-androideabi-
+        export CC64_PATH=/toolchain/android_prebuilts_gcc_linux-x86_aarch64_aarch64-linux-android-4.9/bin
+        export CC32_PATH=/toolchain/android_prebuilts_gcc_linux-x86_arm_arm-linux-androideabi-4.9/bin/
+        export PATH=$CLANG_PATH:$CC64_PATH:$CC32_PATH:$PATH
+        export CLANG_TRIPLE=aarch64-linux-gnu-
+        
+        # Configure for Canadian G7 (G710AWM/ULM)
+        make O=out judyln_lao_com-perf_defconfig
+        
+        # Build
+        make -j$(nproc) O=out \
+          ARCH=arm64 LLVM=1 \
+          CLANG_TRIPLE=aarch64-linux-gnu- \
+          CROSS_COMPILE=aarch64-linux-android- \
+          CROSS_COMPILE_ARM32=arm-linux-androideabi-
+          
+    - name: Prepare release files
+      run: |
+        cd kernel/out/arch/arm64/boot
+        # Create a zip with kernel and dtb
+        mkdir -p $GITHUB_WORKSPACE/release
+        cp Image.gz-dtb $GITHUB_WORKSPACE/release/
+        cp Image $GITHUB_WORKSPACE/release/ 2>/dev/null || true
+        
+    - name: Upload kernel artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: kernel-build-${{ github.sha }}
+        path: release/*
+        
+    - name: Create Release (on tag)
+      if: startsWith(github.ref, 'refs/tags/')
+      uses: softprops/action-gh-release@v2
+      with:
+        files: release/*
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
