@@ -1,5 +1,6 @@
 name: Build Android Kernel (SukiSU + SUSFS Non-GKI)
-
+permissions:
+  contents: write
 on:
   push:
     branches: [ lineage-22.2 ]
@@ -73,6 +74,32 @@ jobs:
           cp out/arch/arm64/boot/Image        release/ 2>/dev/null || true
           ( cd release && zip "sukisu-kernel-$GITHUB_RUN_NUMBER.zip" Image.gz-dtb ) || true
           ls -lh release || true
+
+
+      - name: Publish GitHub Release
+        if: success()
+        env:
+            GITHUB_TOKEN: ${{ github.token }}
+            TAG_NAME: build-$GITHUB_RUN_NUMBER
+        run: |
+          # Create (or reuse) a prerelease tag for this run
+          gh release create "$TAG_NAME" \
+          --title "Kernel build $GITHUB_RUN_NUMBER" \
+          --notes "Automated build from $GITHUB_SHA" \
+          --prerelease || true
+
+          # Upload assets; --clobber overwrites if they exist
+          ASSETS=""
+          [ -f release/Image.gz-dtb ] && ASSETS="$ASSETS release/Image.gz-dtb"
+          [ -f release/Image.gz ]     && ASSETS="$ASSETS release/Image.gz"
+          [ -f release/Image ]        && ASSETS="$ASSETS release/Image"
+          [ -f build.log ]            && ASSETS="$ASSETS build.log"
+
+          if [ -n "$ASSETS" ]; then
+            gh release upload "$TAG_NAME" $ASSETS --clobber
+          else
+            echo "No assets to upload"
+          fi
 
       - name: Upload kernel files
         uses: actions/upload-artifact@v4
