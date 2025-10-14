@@ -74,7 +74,7 @@ jobs:
         if: success()
         run: |
           cd release
-          zip sukisu-kernel-${{ github.run_number }}.zip Image.gz-dtb 2>/dev/null || true
+          zip "sukisu-kernel-${GITHUB_RUN_NUMBER}.zip" Image.gz-dtb || true
 
 
 
