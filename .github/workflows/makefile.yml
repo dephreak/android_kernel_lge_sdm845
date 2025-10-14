@@ -70,23 +70,33 @@ jobs:
           cp out/arch/arm64/boot/Image* release/ 2>/dev/null || true
           ls -lh release
 
-      - name: 🧳 (Optional) Package Flashable Zip
+      - name: 🧳 Package flashable zip (optional)
         if: success()
         run: |
           cd release
           zip "sukisu-kernel-${GITHUB_RUN_NUMBER}.zip" Image.gz-dtb || true
 
+      - name: 📤 Upload kernel artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: kernel-build-${{ github.run_number }}
+          path: |
+            release/*
+            !release/*.zip
 
+      - name: 📤 Upload flashable zip
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: flashable-zip-${{ github.run_number }}
+          path: release/*.zip
 
-
-
-
-
-
-
-
-
-
+      - name: 📤 Upload build log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-log-${{ github.run_number }}
+          path: build.log
 
 
 
