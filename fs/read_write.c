@@ -20,8 +20,18 @@
 #include <linux/fs.h>
 #include "internal.h"
 
+
+
 #include <asm/uaccess.h>
 #include <asm/unistd.h>
+
+
+#ifdef CONFIG_KSU
+  extern bool ksu_read_write_hook __read_mostly;
+  extern ssize_t ksu_handle_read(int fd, char __user *buf, size_t count);
+  extern ssize_t ksu_handle_write(int fd, const char __user *buf, size_t count);
+#endif
+
 
 const struct file_operations generic_ro_fops = {
 	.llseek		= generic_file_llseek,
@@ -583,6 +593,10 @@ static inline void file_pos_write(struct file *file, loff_t pos)
 
 SYSCALL_DEFINE3(read, unsigned int, fd, char __user *, buf, size_t, count)
 {
+#ifdef CONFIG_KSU
+	if (unlikely(ksu_read_write_hook))
+		return ksu_handle_read(fd, buf, count);
+#endif
 	struct fd f = fdget_pos(fd);
 	ssize_t ret = -EBADF;
 
@@ -599,6 +613,12 @@ SYSCALL_DEFINE3(read, unsigned int, fd, char __user *, buf, size_t, count)
 SYSCALL_DEFINE3(write, unsigned int, fd, const char __user *, buf,
 		size_t, count)
 {
+
+  #ifdef CONFIG_KSU
+	if (unlikely(ksu_read_write_hook))
+		return ksu_handle_write(fd, buf, count);
+  #endif
+
 	struct fd f = fdget_pos(fd);
 	ssize_t ret = -EBADF;
 
